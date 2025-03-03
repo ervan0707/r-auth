@@ -1,3 +1,10 @@
+# 1.0.0 (2025-03-03)
+
+
+### Features
+
+* initial release ([595cb23](https://github.com/ervan0707/r-auth/commit/595cb23377d0dde623160cf569cdf81094ce55a0))
+
 ## [1.0.3](https://github.com/ervan0707/r-auth/compare/v1.0.2...v1.0.3) (2025-03-02)
 
 
