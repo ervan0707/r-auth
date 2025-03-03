@@ -1,0 +1,56 @@
+[package]
+name = "r-auth"
+version = "0.0.1"
+edition = "2021"
+authors = ["ervan <ervanroot@gmail.com>"]
+description = "A command-line authentication tool for generating and managing TOTP tokens"
+repository = "https://github.com/Ervan0707/r-auth"
+documentation = "https://github.com/Ervan0707/r-auth#readme"
+homepage = "https://github.com/Ervan0707/r-auth"
+license = "MIT"
+readme = "README.md"
+keywords = ["authentication", "totp", "2fa", "security", "cli"]
+categories = ["command-line-utilities", "authentication", "cryptography"]
+
+[dependencies]
+base32 = "0.4"
+clap = { version = "4.0", features = ["derive"] }
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+qr2term = "0.3"
+url = "2.4"
+crossterm = "0.27"
+thiserror = "1.0"
+age = "0.9"
+dirs = "5.0"
+secrecy = "0.8"
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+] }
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

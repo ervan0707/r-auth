@@ -1,0 +1,44 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    "@semantic-release/changelog",
+    [
+      "@semantic-release/github",
+      {
+        "assets": [
+          {
+            "path": "r-auth-linux-x86_64.tar.gz",
+            "label": "Linux x86_64 binary"
+          },
+          {
+            "path": "r-auth-darwin-x86_64.tar.gz",
+            "label": "macOS x86_64 binary"
+          },
+          {
+            "path": "r-auth-darwin-arm64.tar.gz",
+            "label": "macOS ARM64 binary"
+          },
+          {
+            "path": "r-auth-windows-x86_64.zip",
+            "label": "Windows x86_64 binary"
+          }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "sed -i.bak -E 's/^version = \"[^\"]+\"$/version = \"${nextRelease.version}\"/' Cargo.toml"
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["CHANGELOG.md", "Cargo.toml"],
+        "message": "chore(release): ${nextRelease.version}\n\n${nextRelease.notes}"
+      }
+    ]
+  ]
+}

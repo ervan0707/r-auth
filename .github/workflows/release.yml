@@ -1,0 +1,197 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+
+jobs:
+  prepare:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.semantic.outputs.new_release_version }}
+      release_created: ${{ steps.semantic.outputs.new_release_published }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          dry_run: true # Only determine version without publishing
+          extra_plugins: |
+            @semantic-release/changelog@6.0.3
+            @semantic-release/git
+            @semantic-release/exec
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Cargo.toml version
+        if: steps.semantic.outputs.new_release_published == 'true'
+        run: |
+          echo "Updating version to ${{ steps.semantic.outputs.new_release_version }}"
+          sed -i.bak -E 's/^version = "[^"]+"$/version = "${{ steps.semantic.outputs.new_release_version }}"/' Cargo.toml
+          echo "Updated Cargo.toml:"
+          cat Cargo.toml | grep version
+
+      - name: Upload Cargo.toml
+        if: steps.semantic.outputs.new_release_published == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-toml
+          path: Cargo.toml
+          retention-days: 1
+  build:
+    name: Build (${{ matrix.target }})
+    needs: prepare # Add this line
+    if: needs.prepare.outputs.release_created == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            binary_name: r-auth
+            asset_name: r-auth-linux-x86_64
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_name: r-auth
+            asset_name: r-auth-darwin-x86_64
+            archive_ext: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: r-auth
+            asset_name: r-auth-darwin-arm64
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: r-auth.exe
+            asset_name: r-auth-windows-x86_64
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download updated Cargo.toml
+        uses: actions/download-artifact@v4
+        with:
+          name: cargo-toml
+          path: .
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libsecret-1-dev pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt, clippy
+
+      - name: Setup cross-compilation for Apple Silicon
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          rustup target add aarch64-apple-darwin
+          echo "SDKROOT=$(xcrun -sdk macosx --show-sdk-path)" >> $GITHUB_ENV
+          echo "MACOSX_DEPLOYMENT_TARGET=$(xcrun -sdk macosx --show-sdk-platform-version)" >> $GITHUB_ENV
+
+      - name: Build binary
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          SDKROOT: /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+
+      - name: Package binary (Unix)
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} dist/${{ matrix.asset_name }}
+          cd dist && tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.asset_name }}
+
+      - name: Package binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary_name }}" -Destination "dist\${{ matrix.asset_name }}.exe"
+          Compress-Archive -Path "dist\${{ matrix.asset_name }}.exe" -DestinationPath "dist\${{ matrix.asset_name }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}.${{ matrix.archive_ext }}
+          path: dist/${{ matrix.asset_name }}.${{ matrix.archive_ext }}
+          retention-days: 1
+
+  release:
+    name: Create Release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: r-auth-linux-x86_64.tar.gz
+          path: dist
+
+      - name: Download macOS (x86_64) artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: r-auth-darwin-x86_64.tar.gz
+          path: dist
+
+      - name: Download macOS (ARM64) artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: r-auth-darwin-arm64.tar.gz
+          path: dist
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: r-auth-windows-x86_64.zip
+          path: dist
+
+      - name: Move artifacts to root
+        run: mv dist/* ./
+
+      - name: Semantic Release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          extra_plugins: |
+            @semantic-release/changelog@6.0.3
+            @semantic-release/git
+            @semantic-release/exec
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
