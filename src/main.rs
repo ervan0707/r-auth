@@ -13,7 +13,7 @@ mod error;
 mod totp;
 use std::io::{stdin, stdout, Write};
 
-use crate::error::Result;
+use crate::error::{AuthError, Result};
 
 #[derive(Parser)]
 #[command(
@@ -33,19 +33,64 @@ enum Commands {
     /// Initialize the authenticator with a new encryption key
     Init,
     /// Add a new account
+    ///
+    /// This command adds a new TOTP account to the authenticator. If no secret is provided,
+    /// a secure random secret will be generated automatically. The secret can be specified
+    /// either as a second positional argument or using the --secret flag.
+    ///
+    /// Examples:
+    ///   r-auth add "Google Account"                         # generates random secret
+    ///   r-auth add "GitHub" JBSWY3DPEHPK3PXP               # secret as positional argument
+    ///   r-auth add "GitHub" --secret JBSWY3DPEHPK3PXP      # secret with flag
+    #[command(arg_required_else_help = true)]
     Add {
+        /// Name of the account
         name: String,
-        #[arg(required = false)]
+        /// Optional secret key (positional)
+        #[arg(conflicts_with = "secret")]
+        secret_pos: Option<String>,
+        /// Optional secret key (with flag)
+        #[arg(long, conflicts_with = "secret_pos")]
         secret: Option<String>,
     },
     /// Remove an account
-    Remove { name: String },
+    ///
+    /// This command removes an existing TOTP account from the authenticator.
+    /// The account name can be specified either as a positional argument or using the --name flag.
+    ///
+    /// Examples:
+    ///   r-auth remove "Google Account"        # name as positional argument
+    ///   r-auth remove --name "Google Account" # name with flag
+    #[command(arg_required_else_help = true)]
+    Remove {
+        /// Name of the account to remove (positional)
+        #[arg(conflicts_with = "name")]
+        name_pos: Option<String>,
+        /// Name of the account to remove (with flag)
+        #[arg(long, conflicts_with = "name_pos")]
+        name: Option<String>,
+    },
     /// List all accounts
     List,
     /// Show live TOTP codes
     Show,
     /// Get code for a specific account
-    Code { name: String },
+    ///
+    /// This command displays the current TOTP code for a specified account.
+    /// The account name can be specified either as a positional argument or using the --name flag.
+    ///
+    /// Examples:
+    ///   r-auth code "Google Account"        # name as positional argument
+    ///   r-auth code --name "Google Account" # name with flag
+    #[command(arg_required_else_help = true)]
+    Code {
+        /// Name of the account (positional)
+        #[arg(conflicts_with = "name")]
+        name_pos: Option<String>,
+        /// Name of the account (with flag)
+        #[arg(long, conflicts_with = "name_pos")]
+        name: Option<String>,
+    },
     /// Reset everything - removes encryption key and all accounts (dangerous!)
     Reset,
 }
@@ -81,12 +126,23 @@ fn run(cli: Cli) -> Result<()> {
 
             match cli.command {
                 Commands::Init => unreachable!(),
-                Commands::Add { name, secret } => {
+                Commands::Add {
+                    name,
+                    secret_pos,
+                    secret,
+                } => {
+                    // Use either the positional secret or the flag secret
+                    let secret = secret_pos.or(secret);
                     authenticator.add_account(&name, secret.as_deref())?;
                     println!("Account '{}' added successfully!", name);
                     Ok(())
                 }
-                Commands::Remove { name } => {
+                Commands::Remove { name_pos, name } => {
+                    // Use either the positional name or the flag name
+                    let name = name_pos.or(name).ok_or_else(|| {
+                        AuthError::InvalidSecret("Account name is required".into())
+                    })?;
+
                     if authenticator.remove_account(&name) {
                         println!("Account '{}' removed successfully", name);
                     } else {
@@ -110,7 +166,11 @@ fn run(cli: Cli) -> Result<()> {
                     println!("Press Ctrl+C to exit");
                     authenticator.show_codes()
                 }
-                Commands::Code { name } => {
+                Commands::Code { name_pos, name } => {
+                    let name = name_pos.or(name).ok_or_else(|| {
+                        AuthError::InvalidSecret("Account name is required".into())
+                    })?;
+
                     match authenticator.get_code(&name) {
                         Some(code) => println!("Code for {}: {}", name, code),
                         None => println!("Account '{}' not found", name),

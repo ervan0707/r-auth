@@ -54,7 +54,7 @@ jobs:
           retention-days: 1
   build:
     name: Build (${{ matrix.target }})
-    needs: prepare # Add this line
+    needs: prepare
     if: needs.prepare.outputs.release_created == 'true'
     strategy:
       matrix:
