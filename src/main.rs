@@ -42,6 +42,7 @@ enum Commands {
     ///   r-auth add "Google Account"                         # generates random secret
     ///   r-auth add "GitHub" JBSWY3DPEHPK3PXP               # secret as positional argument
     ///   r-auth add "GitHub" --secret JBSWY3DPEHPK3PXP      # secret with flag
+    ///   r-auth add "GitHub" --force                        # replace existing account
     #[command(arg_required_else_help = true)]
     Add {
         /// Name of the account
@@ -52,6 +53,9 @@ enum Commands {
         /// Optional secret key (with flag)
         #[arg(long, conflicts_with = "secret_pos")]
         secret: Option<String>,
+        /// Force add even if account exists
+        #[arg(long, short)]
+        force: bool,
     },
     /// Remove an account
     ///
@@ -130,10 +134,21 @@ fn run(cli: Cli) -> Result<()> {
                     name,
                     secret_pos,
                     secret,
+                    force,
                 } => {
-                    // Use either the positional secret or the flag secret
                     let secret = secret_pos.or(secret);
-                    authenticator.add_account(&name, secret.as_deref())?;
+
+                    if authenticator.account_exists(&name) && !force {
+                        if !confirm(&format!(
+                            "Account '{}' already exists. Do you want to replace it?",
+                            name
+                        )) {
+                            println!("Add cancelled");
+                            return Ok(());
+                        }
+                    }
+
+                    authenticator.add_account(&name, secret.as_deref(), true)?;
                     println!("Account '{}' added successfully!", name);
                     Ok(())
                 }

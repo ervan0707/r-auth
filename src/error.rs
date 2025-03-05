@@ -46,6 +46,9 @@ pub enum AuthError {
 
     #[error("Keyring error: {0}")]
     Keyring(String),
+
+    #[error("Account '{0}' already exists. Use --force to replace it")]
+    AccountExists(String),
 }
 
 pub type Result<T> = std::result::Result<T, AuthError>;

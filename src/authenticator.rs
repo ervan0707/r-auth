@@ -103,12 +103,21 @@ impl TOTPAuthenticator {
         Ok(())
     }
 
-    pub fn add_account(&mut self, name: &str, secret: Option<&str>) -> Result<String> {
+    pub fn account_exists(&self, name: &str) -> bool {
+        self.accounts.contains_key(name)
+    }
+
+    pub fn add_account(&mut self, name: &str, secret: Option<&str>, force: bool) -> Result<String> {
         // Validate name is not empty
         if name.trim().is_empty() {
             return Err(AuthError::InvalidSecret(
                 "Account name cannot be empty".into(),
             ));
+        }
+
+        // Check if account already exists
+        if self.account_exists(name) && !force {
+            return Err(AuthError::AccountExists(name.to_string()));
         }
 
         let secret = secret
