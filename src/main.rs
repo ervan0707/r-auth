@@ -95,8 +95,8 @@ enum Commands {
     Reset,
 }
 
-fn confirm_reset() -> bool {
-    print!("WARNING: This will delete all accounts and the encryption key.\nThis action cannot be undone. Are you sure? (y/N): ");
+fn confirm(prompt: &str) -> bool {
+    print!("{} (y/N): ", prompt);
     stdout().flush().unwrap();
 
     let mut input = String::new();
@@ -143,6 +143,14 @@ fn run(cli: Cli) -> Result<()> {
                         AuthError::InvalidSecret("Account name is required".into())
                     })?;
 
+                    if !confirm(&format!(
+                        "Are you sure you want to remove account '{}'?",
+                        name
+                    )) {
+                        println!("Remove cancelled");
+                        return Ok(());
+                    }
+
                     if authenticator.remove_account(&name) {
                         println!("Account '{}' removed successfully", name);
                     } else {
@@ -179,19 +187,17 @@ fn run(cli: Cli) -> Result<()> {
                 }
 
                 Commands::Reset => {
-                    if !confirm_reset() {
+                    if !confirm("WARNING: This will delete all accounts and the encryption key.\nThis action cannot be undone. Are you sure?") {
                         println!("Reset cancelled");
                         return Ok(());
                     }
 
-                    // Create authenticator instance to get storage path
                     if let Ok(authenticator) =
                         authenticator::TOTPAuthenticator::new("accounts.json")
                     {
                         authenticator.reset()?;
                     }
 
-                    // Reset crypto key
                     let crypto = crypto::Crypto::new()?;
                     if crypto.key_exists()? {
                         crypto.reset()?;
